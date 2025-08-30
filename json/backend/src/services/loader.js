@@ -1,18 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
-import pdfParse from 'pdf-parse';
+import { PdfReader } from 'pdfreader';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 
 export async function extractTextFromFile(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  const buf = await fs.readFile(filePath);
 
   if (ext === '.txt') {
+    const buf = await fs.readFile(filePath);
     return buf.toString('utf8');
   }
 
   if (ext === '.md') {
+    const buf = await fs.readFile(filePath);
     const md = buf.toString('utf8');
     const tree = unified().use(remarkParse).parse(md);
     // simple plain text extraction from md AST
@@ -26,8 +27,18 @@ export async function extractTextFromFile(filePath) {
   }
 
   if (ext === '.pdf') {
-    const data = await pdfParse(buf);
-    return data.text || '';
+    return new Promise((resolve, reject) => {
+      let text = '';
+      new PdfReader().parseFileItems(filePath, (err, item) => {
+        if (err) {
+          reject(err);
+        } else if (!item) {
+          resolve(text);
+        } else if (item.text) {
+          text += item.text + ' ';
+        }
+      });
+    });
   }
 
   throw new Error('Unsupported file type');

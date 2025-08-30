@@ -1,8 +1,9 @@
-import { Tiktoken } from 'tiktoken-node';
+import pkg from 'tiktoken';
+const { getEncoding } = pkg;
 
 // Token-based chunker using tiktoken
 export function chunkByTiktoken(text, { chunkSize = 800, chunkOverlap = 200 } = {}) {
-  const enc = new Tiktoken('cl100k_base');
+  const enc = getEncoding('cl100k_base');
   const tokens = enc.encode(text);
   const chunks = [];
   let start = 0;

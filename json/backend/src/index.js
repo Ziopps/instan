@@ -17,7 +17,7 @@ const app = express();
 // Security & Validation Middleware
 app.use(corsHandler);
 app.use(requestLogger);
-app.use(rateLimiter);
+// app.use(rateLimiter);
 app.use(express.json({ limit: '2mb' }));
 app.use(validateContentType);
 app.use(sanitizeInput);

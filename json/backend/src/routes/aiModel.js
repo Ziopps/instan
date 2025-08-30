@@ -68,7 +68,12 @@ router.post('/generate', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Generation error:', error);
+    console.error('Detailed Generation Error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      requestBody: req.body
+    });
     res.status(500).json({
       success: false,
       error: error.message,
@@ -136,7 +141,12 @@ router.post('/evaluate', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Evaluation error:', error);
+    console.error('Detailed Evaluation Error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      requestBody: req.body
+    });
     res.status(500).json({
       success: false,
       error: error.message,
@@ -219,7 +229,12 @@ router.post('/embed', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Embedding error:', error);
+    console.error('Detailed Embedding Error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      requestBody: req.body
+    });
     res.status(500).json({
       success: false,
       error: error.message,

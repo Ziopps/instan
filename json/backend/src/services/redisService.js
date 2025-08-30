@@ -22,7 +22,7 @@ export class RedisService {
       db: parseInt(process.env.REDIS_DB) || 0,
       maxRetriesPerRequest: parseInt(process.env.REDIS_MAX_RETRIES) || 3,
       retryDelayOnFailover: parseInt(process.env.REDIS_RETRY_DELAY_ON_FAILURE) || 100,
-      enableOfflineQueue: process.env.REDIS_ENABLE_OFFLINE_QUEUE === 'true',
+      enableOfflineQueue: true,
       lazyConnect: true,
       keepAlive: 30000,
       connectTimeout: 10000,

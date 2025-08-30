@@ -28,6 +28,20 @@ class AIModelService {
             'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json'
           }
+        },
+        deepseek: {
+          endpoint: 'https://api.deepseek.com/v1/chat/completions',
+          headers: {
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        },
+        openrouter: {
+          endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
       },
       evaluation: {
@@ -61,7 +75,7 @@ class AIModelService {
    * Generate text using specified AI model
    * @param {Object} params - Generation parameters
    * @param {string} params.prompt - The prompt for generation
-   * @param {string} params.model - Model provider (openai, gemini, anthropic)
+   * @param {string} params.model - Model provider (openai, gemini, anthropic, deepseek, openrouter)
    * @param {Object} params.options - Model-specific options
    * @returns {Promise<Object>} Generated text and metadata
    */
@@ -76,12 +90,16 @@ class AIModelService {
           return await this._generateGemini(prompt, options);
         case 'anthropic':
           return await this._generateAnthropic(prompt, options);
+        case 'deepseek':
+          return await this._generateDeepSeek(prompt, options);
+        case 'openrouter':
+          return await this._generateOpenRouter(prompt, options);
         default:
           throw new Error(`Unsupported generation model: ${model}`);
       }
     } catch (error) {
       console.error(`Generation error with ${model}:`, error.message);
-      throw new Error(`Text generation failed: ${error.message}`);
+      throw error;
     }
   }
 
@@ -118,7 +136,7 @@ class AIModelService {
       };
     } catch (error) {
       console.error('Evaluation error:', error.message);
-      throw new Error(`Text evaluation failed: ${error.message}`);
+      throw error;
     }
   }
 
@@ -170,6 +188,18 @@ class AIModelService {
           models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
           capabilities: ['text-generation', 'analysis', 'creative-writing'],
           maxTokens: 4096,
+          supportedLanguages: ['en', 'id', 'multiple']
+        },
+        deepseek: {
+          models: ['deepseek-chat', 'deepseek-coder'],
+          capabilities: ['text-generation', 'conversation', 'coding'],
+          maxTokens: 16384,
+          supportedLanguages: ['en', 'id', 'multiple']
+        },
+        openrouter: {
+          models: ['google/gemini-pro-1.5', 'deepseek/deepseek-chat', 'openai/gpt-4-turbo'],
+          capabilities: ['text-generation', 'conversation', 'coding', 'multilingual'],
+          maxTokens: 128000,
           supportedLanguages: ['en', 'id', 'multiple']
         }
       },
@@ -262,6 +292,50 @@ class AIModelService {
     };
   }
 
+  async _generateDeepSeek(prompt, options = {}) {
+    const config = this.models.generation.deepseek;
+    const payload = {
+      model: options.model || 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: options.maxTokens || 4000,
+      temperature: options.temperature || 0.8,
+      top_p: options.topP || 1,
+      frequency_penalty: options.frequencyPenalty || 0,
+      presence_penalty: options.presencePenalty || 0
+    };
+
+    const response = await axios.post(config.endpoint, payload, { headers: config.headers });
+    
+    return {
+      content: response.data.choices[0].message.content,
+      usage: response.data.usage,
+      model: response.data.model,
+      finishReason: response.data.choices[0].finish_reason
+    };
+  }
+
+  async _generateOpenRouter(prompt, options = {}) {
+    const config = this.models.generation.openrouter;
+    const payload = {
+      model: options.model || 'google/gemini-pro-1.5',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: options.maxTokens || 4000,
+      temperature: options.temperature || 0.8,
+      top_p: options.topP || 1,
+      frequency_penalty: options.frequencyPenalty || 0,
+      presence_penalty: options.presencePenalty || 0
+    };
+
+    const response = await axios.post(config.endpoint, payload, { headers: config.headers });
+
+    return {
+      content: response.data.choices[0].message.content,
+      usage: response.data.usage,
+      model: response.data.model,
+      finishReason: response.data.choices[0].finish_reason
+    };
+  }
+
   async _embedOpenAI(text) {
     const config = this.models.embedding.openai;
     const payload = {
@@ -287,12 +361,12 @@ class AIModelService {
       model: process.env.EMBEDDING_MODEL_NAME || 'multilingual-e5-large'
     };
 
-    const response = await axios.post(`${config.endpoint}/embed`, payload, { headers: config.headers });
+    const response = await axios.post(config.endpoint, payload, { headers: config.headers });
     
     return {
-      embeddings: Array.isArray(response.data.embedding) ? [response.data.embedding] : response.data.embeddings,
+      embeddings: response.data.embeddings || [response.data.embedding],
       model: payload.model,
-      dimensions: parseInt(process.env.EMBEDDING_DIM) || 1024
+      dimensions: response.data.dimensions || (response.data.embedding ? response.data.embedding.length : parseInt(process.env.EMBEDDING_DIM)) || 1024
     };
   }
 
