@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Tes Workflow N8N</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f9f9f9; color: #333; }
+        h1, h2 { color: #1a1a1a; }
+        #uploadForm { background-color: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input[type="file"] { margin-bottom: 1em; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        button:hover { background-color: #45a049; }
+        #output { background-color: #eee; padding: 1em; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; margin-top: 1em; min-height: 50px; }
+    </style>
+</head>
+<body>
+    <h1>UI Tes Workflow N8N</h1>
+    <p>Unggah file untuk memicu alur kerja 'document-processing' dari file <strong>Naa.json</strong>.</p>
+    <form id="uploadForm">
+        <input type="file" id="fileInput" required>
+        <br>
+        <button type="submit">Unggah dan Jalankan Workflow</button>
+    </form>
+    <h2>Output Workflow:</h2>
+    <pre id="output">Menunggu output...</pre>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const output = document.getElementById('output');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            output.textContent = 'Memproses...';
+
+            const file = fileInput.files[0];
+            if (!file) {
+                output.textContent = 'Silakan pilih file terlebih dahulu.';
+                return;
+            }
+
+            // URL webhook n8n untuk pengembangan lokal.
+            // Path 'document-processing' diambil dari node webhook di Naa.json.
+            const webhookUrl = 'http://localhost:5678/webhook/document-processing';
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const fileContent = event.target.result;
+
+                try {
+                    // Mengirim request ke webhook n8n.
+                    // Saya berasumsi workflow mengharapkan payload JSON dengan mode dan konten file.
+                    const response = await fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            mode: 'file_content',
+                            fileName: file.name,
+                            fileContent: fileContent,
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    output.textContent = JSON.stringify(result, null, 2);
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    output.textContent = `Terjadi kesalahan: ${error.message}. Periksa konsol browser untuk detail. Pastikan n8n dan backend sudah berjalan.`;
+                }
+            };
+            reader.onerror = () => {
+                output.textContent = 'Gagal membaca file.';
+            };
+            // Asumsi file yang diunggah adalah file teks.
+            reader.readAsText(file);
+        });
+    </script>
+</body>
+</html>

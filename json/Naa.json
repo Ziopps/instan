@@ -1,0 +1,2138 @@
+{
+  "name": "Naa",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.8
+        }
+      },
+      "id": "3178972d-1a73-4f62-99ad-2bb84169d85b",
+      "name": "Novel Generation Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.2
+        }
+      },
+      "id": "56b09d5d-bb42-48c0-b17a-d76aadb93bbd",
+      "name": "QA Evaluation Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        2208,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "novel-generation",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "ignoreBots": false,
+          "rawBody": false
+        }
+      },
+      "id": "958148b1-efdd-43de-96e9-fce1393279e5",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        800
+      ],
+      "webhookId": "novel-generation-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input validation and sanitization with command parsing\nconst body = $input.all()[0].json.body || {};\n\n// Check if commandText is provided (new natural language mode)\nif (body.commandText) {\n  const commandText = String(body.commandText).trim();\n  \n  // Parse chapter number\n  const chapterMatch = commandText.match(/(?:chapter|bab)\\s*(\\d+)/i);\n  const chapterNumber = chapterMatch ? parseInt(chapterMatch[1], 10) : 1;\n  \n  // Extract focus elements after 'karakter' or use full command\n  let focusElements = commandText;\n  const karakterIdx = commandText.toLowerCase().indexOf('karakter');\n  if (karakterIdx >= 0) {\n    focusElements = commandText.slice(karakterIdx);\n  }\n  \n  // Parse mood/style hints\n  let mood = 'dynamic';\n  let stylePreference = 'default';\n  if (/epic|heroik|dramatis/i.test(commandText)) mood = 'epic';\n  if (/romantis|tender/i.test(commandText)) mood = 'romantic';\n  if (/gelap|dark|suram/i.test(commandText)) mood = 'dark';\n  \n  return [{\n    json: {\n      novelId: body.novelId || 'novel-1',\n      chapterNumber,\n      focusElements,\n      stylePreference,\n      mood,\n      requestId: body.requestId || '',\n      callbackUrl: body.callbackUrl || '',\n      iterationCount: 0,\n      commandText,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Legacy structured input validation\nconst requiredFields = ['novelId', 'chapterNumber', 'focusElements', 'stylePreference', 'mood'];\nconst missingFields = requiredFields.filter(field => !body[field]);\n\nif (missingFields.length > 0) {\n  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n}\n\n// Sanitize and validate inputs\nconst novelId = String(body.novelId).trim();\nconst chapterNumber = parseInt(body.chapterNumber);\nconst focusElements = String(body.focusElements).trim();\nconst stylePreference = String(body.stylePreference).trim();\nconst mood = String(body.mood).trim();\nconst requestId = String(body.requestId || '').trim();\nconst callbackUrl = String(body.callbackUrl || '').trim();\n\n// Validation\nif (isNaN(chapterNumber) || chapterNumber < 1) {\n  throw new Error('chapterNumber must be a positive integer');\n}\n\nif (novelId.length < 3) {\n  throw new Error('novelId must be at least 3 characters');\n}\n\nif (!callbackUrl) {\n  throw new Error('callbackUrl is required from backend');\n}\n\nreturn [{\n  json: {\n    novelId,\n    chapterNumber,\n    focusElements,\n    stylePreference,\n    mood,\n    requestId,\n    callbackUrl,\n    iterationCount: 0,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "405e7fa6-ae66-486d-9f60-c0bc41ff6a99",
+      "name": "Validate Input Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build GraphQL query with proper escaping\nconst { novelId } = $input.all()[0].json;\n\nconst query = `\nquery GetNovelContext($novelId: ID!) {\n  novel(id: $novelId) {\n    title\n    characters {\n      id\n      name\n      traits\n      motivations\n      powers\n      fears\n      hiddenDesires\n      origin {\n        name\n        description\n      }\n      affiliations {\n        name\n        type\n      }\n      trivia\n    }\n    world {\n      powerSystem\n      languages {\n        name\n        description\n      }\n      races {\n        name\n        characteristics\n      }\n      cultures {\n        name\n        traditions\n      }\n      cities {\n        name\n        geography\n      }\n      countries {\n        name\n        culture\n      }\n      geography {\n        regions\n        landmarks\n      }\n      monsters {\n        name\n        abilities\n      }\n      relationships {\n        between\n        description\n      }\n    }\n  }\n}`;\n\nconst variables = { novelId };\n\nreturn [{\n  json: {\n    query,\n    variables,\n    ...($input.all()[0].json)\n  }\n}];"
+      },
+      "id": "50baa3ef-8200-472d-94da-6d49f7d1c89e",
+      "name": "Build GraphQL Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GRAPHQL_ENDPOINT }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "781c7111-7f63-42ff-bcb6-ae2e404a4900",
+      "name": "GraphQL World Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        608,
+        608
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "graphql-success",
+              "leftValue": "={{ $json.data }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "rightType": "any"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4cad2eba-de63-4fed-9846-92595c7635d6",
+      "name": "Validate GraphQL Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base=$input.all()[0].json;let neo=null;try{neo=$('Fetch Context via Neo4j').first().json;}catch(e){}let worldState={};try{worldState=$('Redis World State').first().json;}catch(e){}let structured={};try{const r=neo&&neo.results&&neo.results[0]&&neo.results[0].data&&neo.results[0].data[0];const row=r&&(r.row||r.rows)||(neo&&neo.data&&neo.data[0]&&neo.data[0].row);if(row){if(Array.isArray(row)){structured={chapter:row[0],characters:row[1]||[],locations:row[2]||[],related:row[3]||[]};}else if(typeof row==='object'){structured={chapter:row.chapter,characters:row.characters||[],locations:row.locations||[],related:row.related||[]};}}}catch(e){}const title=(structured.chapter&&structured.chapter.title)||(worldState&&worldState.title)||base.novelTitle||'Untitled Novel';function names(a){try{return a.slice(0,3).map(function(x){return x.name}).join(', ');}catch(e){return ''}}function locs(a){try{return a.slice(0,2).map(function(x){return x.name}).join(', ');}catch(e){return ''}}const embeddingText='Novel: '+title+' | Chapter: '+base.chapterNumber+' | Focus: '+base.focusElements+((structured.characters&&structured.characters.length)?' | Chars: '+names(structured.characters):'')+((structured.locations&&structured.locations.length)?' | Locs: '+locs(structured.locations):'');return [{json:{text:embeddingText,model:'e5-large-v2',...base}}];"
+      },
+      "id": "b1122d32-4fb5-4bd0-8c4d-37cea73ff381",
+      "name": "Build Embedding Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EMBEDDING_SERVICE }}/embed",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d515c4c3-6b48-48ce-9619-eea522256dd8",
+      "name": "E5-large-v2 Embedding Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        800
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Pinecone query with validation\nconst embeddingData = $('E5-large-v2 Embedding Query').first().json;\nconst inputData = $input.all()[0].json;\n\nif (!embeddingData.embedding || !Array.isArray(embeddingData.embedding)) {\n  throw new Error('Invalid embedding response');\n}\n\nconst pineconeQuery = {\n  vector: embeddingData.embedding,\n  topK: 10,\n  includeMetadata: true,\n  namespace: `novel-${inputData.novelId}`\n};\n\nreturn [{\n  json: {\n    pineconeQuery,\n    ...inputData\n  }\n}];"
+      },
+      "id": "8682cd8f-2f06-46f7-870d-2e2e71230dc6",
+      "name": "Build Pinecone Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PINECONE_URL }}/query",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "fde74a66-038f-44f4-8d7a-c07f4a60ac7e",
+      "name": "Pinecone Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        800
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "novel:{{ $json.novelId }}:chapter:{{ $json.chapterNumber - 1 }}",
+        "options": {}
+      },
+      "id": "efc9c660-0232-4f6d-97fd-d638d4b8070d",
+      "name": "Redis Previous Chapter",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        608,
+        1008
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "novel:{{ $json.novelId }}:state",
+        "options": {}
+      },
+      "id": "444a811c-00a1-4205-b38f-344e9baa3eb9",
+      "name": "Redis World State",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        800,
+        1008
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEO4J_URI }}/db/{{ $env.NEO4J_DATABASE }}/tx/commit",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "727b6888-ebce-4799-aab4-bdb211e87946",
+      "name": "Fetch Context via Neo4j",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        400
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cache generated chapter and prepare for evaluation\nconst generationResult = $('Novel Generation Model').first().json;\nconst inputData = $input.all()[0].json;\n\nif (!generationResult.response) {\n  throw new Error('Novel generation failed - no content generated');\n}\n\n// Store in cache with TTL\nconst cacheKey = `temp:novel:${inputData.novelId}:chapter:${inputData.chapterNumber}:iteration:${inputData.iterationCount}`;\n\nreturn [{\n  json: {\n    generatedChapter: generationResult.response,\n    cacheKey,\n    ...inputData\n  }\n}];"
+      },
+      "id": "5c8f376b-a579-4b03-9937-960ec208600f",
+      "name": "Cache Generated Chapter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build evaluation prompt using structured context if available\nconst { generatedChapter, combinedContext } = $input.all()[0].json;\nconst { novelData, structuredContext } = combinedContext;\n\nconst characters = (structuredContext?.characters || novelData?.characters || []).map(c => ({ name: c.name, traits: c.traits, motivations: c.motivations }));\nconst powerSystem = structuredContext?.world?.powerSystem || novelData?.world?.powerSystem || 'Not specified';\nconst settingElements = (structuredContext?.locations || novelData?.world?.cities || []).slice(0,2);\n\nconst evaluationPrompt = `Evaluasi chapter novel berikut berdasarkan kriteria spesifik:\n\n**CHAPTER YANG DIEVALUASI:**\n${generatedChapter}\n\n**KRITERIA EVALUASI (Berikan skor 0-100 untuk setiap kriteria):**\n\n1. **Character Consistency (30%)**: Apakah karakter bertindak sesuai traits, motivasi, dan personality mereka?\n   - Reference: ${JSON.stringify(characters)}\n\n2. **World Building Consistency (25%)**: Apakah konsisten dengan power system dan setting dunia?\n   - Power System: ${powerSystem}\n   - Setting Elements: ${JSON.stringify(settingElements)}\n\n3. **Plot Development (25%)**: Apakah chapter memajukan cerita secara logis dan menarik?\n\n4. **Writing Quality (20%)**: Apakah bahasa, dialog, dan pacing berkualitas?\n\n**OUTPUT FORMAT (JSON ONLY):**\n\\`\\`\\`json\n{\n  \"scores\": {\n    \"characterConsistency\": [0-100],\n    \"worldBuilding\": [0-100],\n    \"plotDevelopment\": [0-100],\n    \"writingQuality\": [0-100]\n  },\n  \"totalScore\": [weighted average],\n  \"passed\": [true if totalScore >= 75],\n  \"feedback\": {\n    \"strengths\": [\"point 1\", \"point 2\"],\n    \"improvements\": [\"improvement 1\", \"improvement 2\"]\n  },\n  \"criticalIssues\": [\"issue 1\", \"issue 2\"]\n}\n\\`\\`\\`\n\nBerikan HANYA JSON response, tidak ada text tambahan.`;\n\nreturn [{ json: { evaluationPrompt, ...($input.all()[0].json) } }];"
+      },
+      "id": "f3184ea3-b605-4c54-a4c3-a374b8389631",
+      "name": "Build Evaluation Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.evaluationPrompt }}",
+        "options": {}
+      },
+      "id": "3548c02c-8602-4f1b-b039-e156612640c5",
+      "name": "QA Evaluation Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        2000,
+        1808
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate evaluation result with error handling\nconst evaluationResult = $('QA Evaluation Agent').first().json;\nconst inputData = $input.all()[0].json;\n\nlet parsedResult;\n\ntry {\n  // Try to parse JSON from the response\n  const responseText = evaluationResult.response;\n  \n  // Extract JSON from response (handle markdown formatting)\n  const jsonMatch = responseText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || responseText.match(/{[\\s\\S]*}/);\n  \n  if (!jsonMatch) {\n    throw new Error('No JSON found in evaluation response');\n  }\n  \n  parsedResult = JSON.parse(jsonMatch[1] || jsonMatch[0]);\n  \n  // Validate required fields\n  if (!parsedResult.scores || typeof parsedResult.totalScore !== 'number') {\n    throw new Error('Invalid evaluation format');\n  }\n  \n  // Ensure boolean for passed field\n  parsedResult.passed = parsedResult.totalScore >= 75;\n  \n} catch (error) {\n  console.warn('Evaluation parsing failed:', error.message);\n  // Fallback evaluation\n  parsedResult = {\n    scores: {\n      characterConsistency: 60,\n      worldBuilding: 60,\n      plotDevelopment: 60,\n      writingQuality: 60\n    },\n    totalScore: 60,\n    passed: false,\n    feedback: {\n      strengths: ['Chapter generated successfully'],\n      improvements: ['Evaluation parsing failed - manual review recommended']\n    },\n    criticalIssues: ['Automatic evaluation failed'],\n    evaluationError: error.message\n  };\n}\n\nreturn [{\n  json: {\n    evaluationResult: parsedResult,\n    ...inputData\n  }\n}];"
+      },
+      "id": "b40db169-ca3a-437d-a2a4-52c57906abe4",
+      "name": "Parse Evaluation Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.evaluationResult.passed }}",
+                    "rightValue": "true",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equal"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Chapter Approved"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.evaluationResult.passed }}",
+                    "rightValue": "false",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equal"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.iterationCount }}",
+                    "rightValue": "2",
+                    "operator": {
+                      "type": "number",
+                      "operation": "lt"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Retry Generation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.evaluationResult.passed }}",
+                    "rightValue": "false",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equal"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.iterationCount }}",
+                    "rightValue": "2",
+                    "operator": {
+                      "type": "number",
+                      "operation": "gte"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Human Intervention"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "single"
+        }
+      },
+      "id": "2296561b-e060-4b78-a6d2-1213c8343aaa",
+      "name": "Evaluation Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        2400,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Increment iteration with feedback integration\nconst inputData = $input.all()[0].json;\nconst { evaluationResult } = inputData;\n\n// Build feedback for next iteration\nconst feedbackPrompt = `\nBerdasarkan evaluasi sebelumnya, perbaiki aspek berikut:\n\n**KEKURANGAN YANG PERLU DIPERBAIKI:**\n${evaluationResult.feedback.improvements.join('\\n- ')}\n\n**MASALAH KRITIS:**\n${evaluationResult.criticalIssues.join('\\n- ')}\n\n**SKOR SEBELUMNYA:**\n- Character Consistency: ${evaluationResult.scores.characterConsistency}/100\n- World Building: ${evaluationResult.scores.worldBuilding}/100\n- Plot Development: ${evaluationResult.scores.plotDevelopment}/100\n- Writing Quality: ${evaluationResult.scores.writingQuality}/100\n- TOTAL: ${evaluationResult.totalScore}/100\n\nTARGET: Mencapai skor minimal 75/100 dengan perbaikan fokus pada aspek yang lemah.\n`;\n\nreturn [{\n  json: {\n    iterationCount: inputData.iterationCount + 1,\n    previousFeedback: feedbackPrompt,\n    lastScore: evaluationResult.totalScore,\n    ...inputData\n  }\n}];"
+      },
+      "id": "1ac63704-fb2a-4a2c-8c76-7cd4ccc7d686",
+      "name": "Increment Iteration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "novel:{{ $json.novelId }}:chapter:{{ $json.chapterNumber }}",
+        "value": "={{ $json.generatedChapter }}"
+      },
+      "id": "73664738-e6be-4d02-85a7-3e727933dd2a",
+      "name": "Store Chapter Redis",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2608,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update world state with comprehensive tracking\nconst inputData = $input.all()[0].json;\nconst { combinedContext, evaluationResult } = inputData;\n\nconst updatedWorldState = {\n  lastChapter: inputData.chapterNumber,\n  lastUpdated: new Date().toISOString(),\n  chapterQuality: {\n    [`chapter_${inputData.chapterNumber}`]: {\n      score: evaluationResult.totalScore,\n      iterations: inputData.iterationCount + 1,\n      approved: evaluationResult.passed\n    }\n  },\n  characters: combinedContext.novelData.characters?.map(c => ({\n    id: c.id,\n    name: c.name,\n    lastAppearance: inputData.chapterNumber,\n    developmentNotes: `Updated in chapter ${inputData.chapterNumber}`,\n    relationshipStatus: 'active'\n  })) || [],\n  world: {\n    ...combinedContext.novelData.world,\n    lastUpdated: new Date().toISOString(),\n    activeElements: {\n      powerSystem: combinedContext.novelData.world?.powerSystem || 'undefined',\n      currentSetting: combinedContext.novelData.world?.cities?.[0]?.name || 'unknown'\n    }\n  },\n  metrics: {\n    totalChapters: inputData.chapterNumber,\n    averageQuality: evaluationResult.totalScore,\n    lastGenerationDuration: new Date().toISOString()\n  }\n};\n\nreturn [{\n  json: {\n    updatedWorldState,\n    ...inputData\n  }\n}];"
+      },
+      "id": "0cba274e-2f0c-45f2-bba7-ae72c0909ee7",
+      "name": "Prepare World State Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2608,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "novel:{{ $json.novelId }}:state",
+        "value": "={{ $json.updatedWorldState }}"
+      },
+      "id": "393d7d19-c30b-446a-a1a7-a20b284636c6",
+      "name": "Update World State",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2608,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare comprehensive success response with Markdown formatting\nconst inputData = $input.all()[0].json;\nconst { evaluationResult, combinedContext } = inputData;\n\n// Format chapter content as Markdown\nconst markdownContent = `# Chapter ${inputData.chapterNumber}\n\n${inputData.generatedChapter}\n\n---\n\n**Metadata:**\n- **Quality Score:** ${evaluationResult.totalScore}/100\n- **Iterations:** ${inputData.iterationCount + 1}\n- **Style:** ${inputData.stylePreference}\n- **Mood:** ${inputData.mood}\n- **Focus:** ${inputData.focusElements}\n- **Generated:** ${new Date().toISOString()}\n\n${inputData.commandText ? `**Original Command:** ${inputData.commandText}` : ''}`;\n\nconst successResponse = {\n  status: 'completed',\n  data: {\n    novelId: inputData.novelId,\n    chapterNumber: inputData.chapterNumber,\n    requestId: inputData.requestId,\n    title: `Chapter ${inputData.chapterNumber}`,    \n    content: inputData.generatedChapter,\n    markdownContent,\n    wordCount: inputData.generatedChapter.split(' ').length,\n    qualityScore: evaluationResult.totalScore,\n    iterations: inputData.iterationCount + 1,\n    completionTime: new Date().toISOString(),\n    metadata: {\n      style: inputData.stylePreference,\n      mood: inputData.mood,\n      focusElements: inputData.focusElements,\n      commandText: inputData.commandText || null\n    }\n  },\n  message: 'Chapter generated successfully',\n  callbackUrl: inputData.callbackUrl,\n  n8nWebhookUrl: $env.N8N_WEBHOOK_URL\n};\n\nreturn [{\n  json: successResponse\n}];"
+      },
+      "id": "ad1aa14b-cbec-4539-a910-d363d8b16251",
+      "name": "Prepare Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "575715b7-b1c9-4ec0-8d84-a2956670c343",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3008,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare human intervention alert with detailed context\nconst inputData = $input.all()[0].json;\nconst { evaluationResult } = inputData;\n\nconst alertData = {\n  text: `🚨 HUMAN INTERVENTION REQUIRED\\n\\n` +\n        `**Novel:** ${inputData.novelId}\\n` +\n        `**Chapter:** ${inputData.chapterNumber}\\n` +\n        `**Issue:** Failed QA after ${inputData.iterationCount + 1} iterations\\n\\n` +\n        `**Final Scores:**\\n` +\n        `• Character Consistency: ${evaluationResult.scores.characterConsistency}/100\\n` +\n        `• World Building: ${evaluationResult.scores.worldBuilding}/100\\n` +\n        `• Plot Development: ${evaluationResult.scores.plotDevelopment}/100\\n` +\n        `• Writing Quality: ${evaluationResult.scores.writingQuality}/100\\n` +\n        `• **TOTAL: ${evaluationResult.totalScore}/100** (Target: 75+)\\n\\n` +\n        `**Critical Issues:**\\n${evaluationResult.criticalIssues.map(issue => `• ${issue}`).join('\\n')}\\n\\n` +\n        `**Improvements Needed:**\\n${evaluationResult.feedback.improvements.map(imp => `• ${imp}`).join('\\n')}\\n\\n` +\n        `**Action Required:** Manual review and editing needed.`,\n  channel: '#novel-alerts',\n  username: 'Novel Writing System',\n  icon_emoji: ':warning:'\n};\n\nconst errorResponse = {\n  status: 'intervention_required',\n  data: {\n    novelId: inputData.novelId,\n    chapterNumber: inputData.chapterNumber,\n    requestId: inputData.requestId,\n    qualityScore: evaluationResult.totalScore,\n    iterations: inputData.iterationCount + 1,\n    lastAttempt: inputData.generatedChapter,\n    evaluation: evaluationResult\n  },\n  message: `Human intervention required - quality score ${evaluationResult.totalScore} after ${inputData.iterationCount + 1} iterations`\n};\n\nreturn [{\n  json: {\n    alertData,\n    errorResponse,\n    callbackUrl: inputData.callbackUrl,\n    n8nWebhookUrl: $env.N8N_WEBHOOK_URL,\n    ...inputData\n  }\n}];"
+      },
+      "id": "c068b757-a714-4523-8eed-4932b00ed5da",
+      "name": "Prepare Intervention Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2608,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "2c88ef50-23db-4965-b173-71618c685dc2",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2800,
+        1408
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "novel:{{ $json.novelId }}:chapter:{{ $json.chapterNumber }}:intervention",
+        "value": "={{ $json.errorResponse }}"
+      },
+      "id": "0899b4df-b0f3-4594-8dc8-817e4d02b9c9",
+      "name": "Store Intervention Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "4a261e4f-a5c8-47ca-a146-c7b970c6bef3",
+      "name": "Respond Intervention Needed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3008,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Global error handler with comprehensive logging\nconst error = $input.all()[0];\nconst executionId = $executionId;\n\nconst errorData = {\n  executionId,\n  timestamp: new Date().toISOString(),\n  error: {\n    message: error.error?.message || 'Unknown error',\n    stack: error.error?.stack || 'No stack trace',\n    node: error.node || 'Unknown node',\n    type: error.error?.name || 'UnknownError'\n  },\n  input: error.json || {},\n  context: 'Novel Writing System'\n};\n\n// Log to console for debugging\nconsole.error('Novel Writing System Error:', errorData);\n\nconst errorResponse = {\n  status: 'error',\n  message: 'System error occurred during novel generation',\n  error: {\n    type: errorData.error.type,\n    message: errorData.error.message,\n    executionId: executionId,\n    timestamp: errorData.timestamp\n  },\n  data: null\n};\n\nreturn [{\n  json: {\n    errorResponse,\n    errorData,\n    shouldAlert: true\n  }\n}];"
+      },
+      "id": "9c9967a4-7d83-40bf-b7e7-7be89687e28f",
+      "name": "Global Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sign callback payload for backend webhook validation\nconst crypto = require('crypto');\nconst inputData = $input.first().json;\n\n// Prepare the complete response payload\nconst payload = JSON.stringify(inputData);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\n\n// Create HMAC signature using CALLBACK_SECRET\nconst secret = $env.CALLBACK_SECRET;\nif (!secret) {\n  throw new Error('CALLBACK_SECRET environment variable not set');\n}\n\nconst signatureData = `${timestamp}.${payload}`;\nconst signature = crypto.createHmac('sha256', secret).update(signatureData).digest('hex');\n\nreturn [{\n  json: {\n    payload,\n    timestamp,\n    signature: `sha256=${signature}`,\n    callbackUrl: inputData.callbackUrl\n  }\n}];"
+      },
+      "id": "4111b938-2619-4b78-a407-28ded6e474c4",
+      "name": "Sign Success Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-webhook-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "cc682cc0-6362-4a0c-b1c4-6078fea1f58f",
+      "name": "Post Success Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3024,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{ $json.errorResponse.status }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ $json.errorResponse.data }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.errorResponse.message }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "e56cca42-6c80-4cb4-874b-a090207daa67",
+      "name": "Post Intervention Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2832,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Global error handler with callback support\nconst inputData = $input.all()[0].json;\nconst error = inputData.error || 'Unknown error occurred';\n\nconst errorData = {\n  novelId: inputData?.novelId || null,\n  chapterNumber: inputData?.chapterNumber || null,\n  requestId: inputData?.requestId || null,\n  error: error,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    status: \"error\",\n    data: errorData,\n    message: \"System error occurred during novel generation\",\n    callbackUrl: inputData?.callbackUrl || $env.CALLBACK_URL,\n    n8nWebhookUrl: $env.N8N_WEBHOOK_URL\n  }\n}];"
+      },
+      "id": "484e12a6-decb-4f61-b132-9c89f8627476",
+      "name": "Prepare Error Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sign error callback payload\nconst crypto = require('crypto');\nconst inputData = $input.first().json;\n\n// Prepare the error response payload\nconst errorPayload = {\n  status: inputData.status,\n  data: inputData.data,\n  message: inputData.message\n};\n\nconst payload = JSON.stringify(errorPayload);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\n\n// Create HMAC signature\nconst secret = $env.CALLBACK_SECRET;\nif (!secret) {\n  throw new Error('CALLBACK_SECRET environment variable not set');\n}\n\nconst signatureData = `${timestamp}.${payload}`;\nconst signature = crypto.createHmac('sha256', secret).update(signatureData).digest('hex');\n\nreturn [{\n  json: {\n    payload,\n    timestamp,\n    signature: `sha256=${signature}`,\n    callbackUrl: inputData.callbackUrl\n  }\n}];"
+      },
+      "id": "d3a198cd-2a67-42cd-ab8e-6eedc8d17ccc",
+      "name": "Sign Error Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "x-webhook-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "0104aa36-9f1f-4ee7-bc2a-15fd22210edc",
+      "name": "Post Error Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1840,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "document-processing",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "ignoreBots": false,
+          "rawBody": false
+        }
+      },
+      "id": "doc-proc-webhook-123",
+      "name": "Document Processing Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -800
+      ],
+      "webhookId": "document-processing-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Document Processing Input Validation and Mode Detection\nconst body = $input.all()[0].json.body || {};\n\n// Validate required fields\nif (!body.novelId) {\n  throw new Error('novelId is required');\n}\n\nif (!body.content && !body.fileUrl && !body.chunks) {\n  throw new Error('Either content, fileUrl, or pre-processed chunks must be provided');\n}\n\n// Mode A: Pre-processed chunks (from backend)\nif (body.chunks && Array.isArray(body.chunks)) {\n  return [{\n    json: {\n      mode: 'pre_chunked',\n      novelId: body.novelId,\n      namespace: body.namespace || `novel-${body.novelId}`,\n      chunks: body.chunks,\n      metadata: body.metadata || {},\n      source: body.source || { fileName: 'unknown', type: 'text' },\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Mode B: Raw content for processing\nif (body.content) {\n  return [{\n    json: {\n      mode: 'raw_content',\n      novelId: body.novelId,\n      namespace: body.namespace || `novel-${body.novelId}`,\n      content: body.content,\n      chunkingStrategy: body.chunkingStrategy || 'semantic',\n      chunkSize: body.chunkSize || 1000,\n      overlap: body.overlap || 200,\n      metadata: body.metadata || {},\n      source: body.source || { fileName: 'direct_input', type: 'text' },\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Mode C: File URL for download and processing\nif (body.fileUrl) {\n  return [{\n    json: {\n      mode: 'file_url',\n      novelId: body.novelId,\n      namespace: body.namespace || `novel-${body.novelId}`,\n      fileUrl: body.fileUrl,\n      chunkingStrategy: body.chunkingStrategy || 'semantic',\n      chunkSize: body.chunkSize || 1000,\n      overlap: body.overlap || 200,\n      metadata: body.metadata || {},\n      source: body.source || { fileName: body.fileUrl.split('/').pop(), type: 'url' },\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nthrow new Error('Invalid input: no valid processing mode detected');"
+      },
+      "id": "doc-proc-validate-456",
+      "name": "Validate Document Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "file-url-mode",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "file_url",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "doc-proc-switch-789",
+      "name": "Check Processing Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.fileUrl }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "doc-proc-download-012",
+      "name": "Download Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        -1000
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Advanced Document Chunking Engine\nconst inputData = $input.all()[0].json;\nlet content = '';\n\n// Get content based on mode\nif (inputData.mode === 'file_url') {\n  const downloadResult = $('Download Document').first().json;\n  content = downloadResult.data || downloadResult.body || '';\n} else if (inputData.mode === 'raw_content') {\n  content = inputData.content;\n} else if (inputData.mode === 'pre_chunked') {\n  // Skip chunking for pre-processed chunks\n  return [{\n    json: {\n      ...inputData,\n      processedChunks: inputData.chunks.map((chunk, index) => ({\n        index: chunk.index || index,\n        text: chunk.text,\n        length: chunk.text.length,\n        id: `${inputData.novelId}-chunk-${chunk.index || index}`,\n        metadata: chunk.metadata || {}\n      }))\n    }\n  }];\n}\n\nif (!content || content.trim().length === 0) {\n  throw new Error('No content available for chunking');\n}\n\nconst { chunkingStrategy, chunkSize, overlap } = inputData;\nlet chunks = [];\n\nswitch (chunkingStrategy) {\n  case 'fixed_size':\n    // Fixed size chunking\n    for (let i = 0; i < content.length; i += chunkSize - overlap) {\n      const chunk = content.slice(i, i + chunkSize);\n      if (chunk.trim().length > 0) {\n        chunks.push({\n          index: chunks.length,\n          text: chunk.trim(),\n          length: chunk.trim().length,\n          id: `${inputData.novelId}-chunk-${chunks.length}`,\n          metadata: {\n            strategy: 'fixed_size',\n            startPos: i,\n            endPos: i + chunkSize\n          }\n        });\n      }\n    }\n    break;\n\n  case 'paragraph':\n    // Paragraph-based chunking\n    const paragraphs = content.split(/\\n\\s*\\n/);\n    let currentChunk = '';\n    let chunkIndex = 0;\n    \n    for (const paragraph of paragraphs) {\n      if ((currentChunk + paragraph).length > chunkSize && currentChunk.length > 0) {\n        chunks.push({\n          index: chunkIndex++,\n          text: currentChunk.trim(),\n          length: currentChunk.trim().length,\n          id: `${inputData.novelId}-chunk-${chunkIndex - 1}`,\n          metadata: {\n            strategy: 'paragraph',\n            paragraphCount: currentChunk.split(/\\n\\s*\\n/).length\n          }\n        });\n        currentChunk = paragraph;\n      } else {\n        currentChunk += (currentChunk ? '\\n\\n' : '') + paragraph;\n      }\n    }\n    \n    if (currentChunk.trim().length > 0) {\n      chunks.push({\n        index: chunkIndex,\n        text: currentChunk.trim(),\n        length: currentChunk.trim().length,\n        id: `${inputData.novelId}-chunk-${chunkIndex}`,\n        metadata: {\n          strategy: 'paragraph',\n          paragraphCount: currentChunk.split(/\\n\\s*\\n/).length\n        }\n      });\n    }\n    break;\n\n  case 'semantic':\n  default:\n    // Semantic chunking (advanced)\n    const sentences = content.split(/[.!?]+\\s+/);\n    let currentChunk = '';\n    let chunkIndex = 0;\n    \n    for (const sentence of sentences) {\n      const testChunk = currentChunk + (currentChunk ? ' ' : '') + sentence;\n      \n      if (testChunk.length > chunkSize && currentChunk.length > 0) {\n        // Add overlap from previous chunk\n        const overlapText = currentChunk.slice(-overlap);\n        \n        chunks.push({\n          index: chunkIndex++,\n          text: currentChunk.trim(),\n          length: currentChunk.trim().length,\n          id: `${inputData.novelId}-chunk-${chunkIndex - 1}`,\n          metadata: {\n            strategy: 'semantic',\n            sentenceCount: currentChunk.split(/[.!?]+/).length,\n            hasOverlap: chunkIndex > 0\n          }\n        });\n        \n        currentChunk = (chunkIndex > 0 ? overlapText : '') + sentence;\n      } else {\n        currentChunk = testChunk;\n      }\n    }\n    \n    if (currentChunk.trim().length > 0) {\n      chunks.push({\n        index: chunkIndex,\n        text: currentChunk.trim(),\n        length: currentChunk.trim().length,\n        id: `${inputData.novelId}-chunk-${chunkIndex}`,\n        metadata: {\n          strategy: 'semantic',\n          sentenceCount: currentChunk.split(/[.!?]+/).length,\n          hasOverlap: chunkIndex > 0\n        }\n      });\n    }\n    break;\n}\n\nif (chunks.length === 0) {\n  throw new Error('No chunks generated from content');\n}\n\nreturn [{\n  json: {\n    ...inputData,\n    processedChunks: chunks,\n    totalChunks: chunks.length,\n    processingStats: {\n      originalLength: content.length,\n      chunksGenerated: chunks.length,\n      averageChunkSize: Math.round(chunks.reduce((sum, c) => sum + c.length, 0) / chunks.length),\n      strategy: chunkingStrategy\n    }\n  }\n}];"
+      },
+      "id": "doc-proc-chunker-345",
+      "name": "Advanced Document Chunker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split chunks for parallel embedding processing\nconst inputData = $input.all()[0].json;\nconst { processedChunks, novelId, namespace, metadata, source } = inputData;\n\nreturn processedChunks.map(chunk => ({\n  json: {\n    novelId,\n    namespace,\n    metadata: {\n      ...metadata,\n      ...chunk.metadata,\n      sourceFile: source.fileName,\n      sourceType: source.type\n    },\n    source,\n    chunk,\n    totalChunks: processedChunks.length,\n    processingStats: inputData.processingStats\n  }\n}));"
+      },
+      "id": "doc-proc-splitter-678",
+      "name": "Split Chunks for Processing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EMBEDDING_SERVICE }}/embed",
+        "sendBody": true,
+        "jsonBody": "={{ { \"text\": $json.chunk.text, \"model\": $env.EMBEDDING_MODEL_NAME || \"e5-large-v2\" } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "doc-proc-embed-901",
+      "name": "Generate Document Embeddings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        -800
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare enhanced vectors for Pinecone with rich metadata\nconst embeddingResponse = $input.all()[0].json;\nconst chunkData = $('Split Chunks for Processing').first().json;\n\nif (!embeddingResponse.embedding || !Array.isArray(embeddingResponse.embedding)) {\n  throw new Error('Invalid embedding response for document chunk');\n}\n\nconst vector = {\n  id: chunkData.chunk.id,\n  values: embeddingResponse.embedding,\n  metadata: {\n    // Core metadata\n    novelId: chunkData.novelId,\n    namespace: chunkData.namespace,\n    chunkIndex: chunkData.chunk.index,\n    length: chunkData.chunk.length,\n    \n    // Source information\n    sourceFile: chunkData.source.fileName,\n    sourceType: chunkData.source.type,\n    \n    // Chunking metadata\n    chunkingStrategy: chunkData.chunk.metadata.strategy,\n    hasOverlap: chunkData.chunk.metadata.hasOverlap || false,\n    \n    // Processing metadata\n    uploadedAt: new Date().toISOString(),\n    processingMode: 'document_processing',\n    \n    // Content preview for debugging\n    contentPreview: chunkData.chunk.text.slice(0, 100),\n    \n    // Custom metadata from input\n    ...chunkData.metadata\n  }\n};\n\nreturn [{\n  json: {\n    vector,\n    namespace: chunkData.namespace,\n    novelId: chunkData.novelId,\n    chunkIndex: chunkData.chunk.index,\n    totalChunks: chunkData.totalChunks,\n    processingStats: chunkData.processingStats\n  }\n}];"
+      },
+      "id": "doc-proc-vector-234",
+      "name": "Prepare Document Vector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PINECONE_URL }}/vectors/upsert",
+        "sendBody": true,
+        "jsonBody": "={{ { \"vectors\": [$json.vector], \"namespace\": $json.namespace } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "={{ $env.PINECONE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "doc-proc-upsert-567",
+      "name": "Upsert Document Vector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        -800
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate document processing results with enhanced statistics\nconst allResults = $input.all();\nconst successfulUpserts = allResults.filter(item => !item.error && (item.json.upsertedCount > 0 || item.json.status === 'success'));\nconst failedUpserts = allResults.filter(item => item.error || (item.json.upsertedCount === 0 && item.json.status !== 'success'));\n\nconst totalProcessed = allResults.length;\nconst totalSuccessful = successfulUpserts.length;\nconst totalFailed = failedUpserts.length;\n\n// Get processing statistics\nconst vectorData = $('Prepare Document Vector').all();\nconst firstVector = vectorData[0]?.json || {};\nconst processingStats = firstVector.processingStats || {};\n\nconst response = {\n  status: totalFailed === 0 ? 'success' : (totalSuccessful > 0 ? 'partial_success' : 'failed'),\n  mode: 'document_processing',\n  data: {\n    novelId: firstVector.novelId || 'unknown',\n    namespace: firstVector.namespace || 'unknown',\n    totalChunks: firstVector.totalChunks || totalProcessed,\n    successfulUpserts: totalSuccessful,\n    failedUpserts: totalFailed,\n    processingStats: {\n      ...processingStats,\n      successRate: Math.round((totalSuccessful / totalProcessed) * 100),\n      totalVectorsCreated: totalSuccessful\n    },\n    upsertedVectors: successfulUpserts.map((r, index) => {\n      const vectorInfo = vectorData[index]?.json || {};\n      return {\n        chunkIndex: vectorInfo.chunkIndex || index,\n        vectorId: vectorInfo.vector?.id || `unknown-chunk-${index}`,\n        upsertedCount: r.json.upsertedCount || 1,\n        chunkLength: vectorInfo.vector?.metadata?.length || 0\n      };\n    })\n  },\n  metadata: {\n    timestamp: new Date().toISOString(),\n    processingTime: Date.now() - new Date().getTime(),\n    n8nWebhookUrl: $env.N8N_WEBHOOK_URL\n  }\n};\n\nif (totalFailed > 0) {\n  response.errors = failedUpserts.map((r, index) => ({\n    chunkIndex: vectorData[index]?.json?.chunkIndex || index,\n    error: r.error?.message || r.json?.error || 'Unknown error',\n    vectorId: vectorData[index]?.json?.vector?.id || `unknown-chunk-${index}`\n  }));\n}\n\nreturn [{ json: response }];"
+      },
+      "id": "doc-proc-aggregate-890",
+      "name": "Aggregate Document Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "doc-proc-respond-123",
+      "name": "Respond Document Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle document processing errors\nconst error = $input.all()[0];\nconst inputData = $('Validate Document Input').first()?.json || {};\n\nconst errorResponse = {\n  status: 'error',\n  message: error.error?.message || 'Document processing failed',\n  mode: 'document_processing',\n  data: {\n    novelId: inputData.novelId || 'unknown',\n    namespace: inputData.namespace || 'unknown',\n    processingMode: inputData.mode || 'unknown'\n  },\n  timestamp: new Date().toISOString(),\n  error: {\n    type: error.error?.name || 'DocumentProcessingError',\n    details: error.error?.stack || 'No details available'\n  },\n  metadata: {\n    n8nWebhookUrl: $env.N8N_WEBHOOK_URL\n  }\n};\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "doc-proc-error-456",
+      "name": "Prepare Document Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        -600
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "doc-proc-error-resp-789",
+      "name": "Respond Document Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -600
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔧 PERBAIKAN UTAMA\n\n### ✅ Error Handling & Validation\n- Input validation dengan sanitization\n- Comprehensive error handling di setiap node\n- Fallback mechanisms untuk data failures\n- Global error handler\n\n### ⚡ Performance Optimizations  \n- Model GPT-4o-mini untuk efisiensi biaya\n- Reduced iteration limit (3→2)\n- Optimized prompts dengan token management\n- Context summarization untuk large data\n\n### 🛡️ Reliability Improvements\n- Retry mechanisms dengan exponential backoff\n- Proper timeout configurations\n- Data validation at every step\n- Cache management dengan TTL\n\n### 📊 Enhanced Monitoring\n- Detailed logging dan metrics\n- Quality score tracking\n- Human intervention workflows\n- Slack notifications untuk alerts\n\n### 📄 Document Processing\n- Advanced chunking strategies (fixed, paragraph, semantic)\n- Multi-format document support\n- Parallel embedding generation\n- Enhanced vector metadata\n- N8N webhook URL integration",
+        "height": 400,
+        "width": 400,
+        "color": 2
+      },
+      "id": "4cb1010c-5e54-4664-b8d3-da1f99b45fe9",
+      "name": "Key Improvements",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔄 WORKFLOW ARCHITECTURE\n\n### Phase 1: Input & Context\n1. **Webhook Trigger** → **Input Validation**\n2. **GraphQL Query** → **Pinecone Search**\n3. **Redis Cache** → **Context Aggregation**\n\n### Phase 2: Generation Loop\n4. **Prompt Building** → **AI Generation**\n5. **QA Evaluation** → **Decision Switch**\n6. **Retry Logic** (max 2 iterations)\n\n### Phase 3: Storage & Response\n7. **Redis Storage** → **State Updates**\n8. **Success Response** OR **Human Intervention**\n\n### 🚨 Error Paths\n- Global error handler dengan logging\n- Slack alerts untuk critical issues\n- Intervention data storage",
+        "height": 500,
+        "width": 400,
+        "color": 4
+      },
+      "id": "211d27a0-76d9-4536-8981-347bedbf45a4",
+      "name": "Architecture Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "novel-upload",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "ignoreBots": false,
+          "rawBody": false
+        }
+      },
+      "id": "d71f92e2-e166-463c-aa7c-959acabb91e2",
+      "name": "Upload Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "novel-upload-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate upload payload and determine mode\nconst body = $input.all()[0].json.body || {};\n\n// Mode A: Direct Cypher\nif (body.cypher) {\n  if (typeof body.cypher !== 'string' || body.cypher.trim().length === 0) {\n    throw new Error('Invalid cypher query provided');\n  }\n  \n  const traceId = body.traceId || (Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36));\n  return [{\n    json: {\n      mode: 'cypher',\n      cypher: body.cypher.trim(),\n      params: body.params || {},\n      timestamp: new Date().toISOString(),\n      traceId\n    }\n  }];\n}\n\n// Mode B: Embedding upload (from backend with chunks) - Check this first\nif (body.chunks && Array.isArray(body.chunks)) {\n  const { novelId, namespace, chunks, metadata = {}, source = {} } = body;\n  \n  if (!novelId) {\n    throw new Error('novelId is required for embedding upload');\n  }\n  \n  if (!namespace) {\n    throw new Error('namespace is required for embedding upload');\n  }\n  \n  if (chunks.length === 0) {\n    throw new Error('chunks array cannot be empty');\n  }\n  \n  const traceId = body.traceId || (Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36));\n  \n  return [{\n    json: {\n      mode: 'embedding',\n      novelId,\n      namespace,\n      chunks,\n      metadata,\n      source,\n      timestamp: new Date().toISOString(),\n      traceId\n    }\n  }];\n}\n\n// Mode C: Structured upload\nconst { novelId, title, chapterNumber, characters = [], locations = [] } = body;\n\nif (novelId && chapterNumber) {\n  // Build Cypher statement for structured data\n  const statement = `\n    MERGE (n:Novel {id: $novelId})\n    ON CREATE SET n.title = coalesce($title, $novelId), n.createdAt = timestamp()\n    SET n.updatedAt = timestamp()\n    MERGE (c:Chapter {number: toInteger($chapterNumber), novelId: $novelId})\n    ON CREATE SET c.title = coalesce($title, 'Chapter '+$chapterNumber), c.createdAt = timestamp()\n    SET c.updatedAt = timestamp()\n    MERGE (n)-[:HAS_CHAPTER]->(c)\n    WITH n, c\n    FOREACH (ch IN $characters | MERGE (chNode:Character {name: ch.name}) ON CREATE SET chNode.id = coalesce(ch.id, randomUUID()) MERGE (c)-[:FEATURES]->(chNode))\n    WITH n, c\n    FOREACH (loc IN $locations | MERGE (l:Location {name: loc.name}) MERGE (c)-[:OCCURS_IN]->(l))\n    RETURN n{.*, id:id(n)} AS novel, c{.*, id:id(c)} AS chapter`;\n\n  const params = {\n    novelId,\n    title: title || null,\n    chapterNumber: parseInt(chapterNumber, 10),\n    characters,\n    locations\n  };\n\n  const traceId = body.traceId || (Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36));\n\n  return [{\n    json: {\n      mode: 'structured',\n      cypher: statement,\n      params,\n      originalData: { novelId, title, chapterNumber, characters, locations },\n      timestamp: new Date().toISOString(),\n      traceId\n    }\n  }];\n}\n\n// If none of the modes match\nthrow new Error('Invalid payload: must provide either cypher, structured data (novelId + chapterNumber), or embedding data (novelId + chunks)');"
+      },
+      "id": "759f8390-813e-4513-9faf-3c44693f75c9",
+      "name": "Validate Upload Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEO4J_URI }}/db/{{ $env.NEO4J_DATABASE }}/tx/commit",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "c553ab4e-f73e-4fb2-9a33-da79cd4a5ec1",
+      "name": "Execute Neo4j Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Neo4j response and prepare final response\nconst uploadData = $('Validate Upload Payload').first().json;\nconst neo4jResponse = $input.all()[0].json;\n\n// Check for Neo4j errors\nif (neo4jResponse.errors && neo4jResponse.errors.length > 0) {\n  const error = neo4jResponse.errors[0];\n  throw new Error(`Neo4j error: ${error.message} (${error.code})`);\n}\n\n// Extract results\nconst results = neo4jResponse.results || [];\nconst data = results.length > 0 ? results[0].data : [];\n\nconst response = {\n  status: 'success',\n  mode: uploadData.mode,\n  data: {\n    recordsAffected: data.length,\n    results: data,\n    executionTime: neo4jResponse.executionTime || null\n  },\n  metadata: {\n    timestamp: uploadData.timestamp,\n    neo4jResponse: {\n      resultAvailableAfter: neo4jResponse.resultAvailableAfter || null,\n      resultConsumedAfter: neo4jResponse.resultConsumedAfter || null\n    }\n  }\n};\n\n// Add original data for structured uploads\nif (uploadData.mode === 'structured') {\n  response.originalData = uploadData.originalData;\n}\n\nreturn [{ json: response }];"
+      },
+      "id": "91a3ea4d-6b73-4723-acd4-7fc52f7cf8ab",
+      "name": "Prepare Upload Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "082ca01c-1245-4c37-a633-0c047350a869",
+      "name": "Respond Upload Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle upload errors\nconst error = $input.all()[0];\nconst uploadData = $('Validate Upload Payload').first()?.json || {};\n\nconst errorResponse = {\n  status: 'error',\n  message: error.error?.message || 'Upload failed',\n  mode: uploadData.mode || 'unknown',\n  timestamp: new Date().toISOString(),\n  error: {\n    type: error.error?.name || 'UploadError',\n    details: error.error?.stack || 'No details available'\n  }\n};\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "80cdc93e-a439-4edc-a468-131706635b00",
+      "name": "Prepare Upload Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "4032b8ef-f82d-484b-9b20-858292240036",
+      "name": "Respond Upload Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "embedding-mode",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "embedding",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Check Upload Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process chunks for embedding\nconst inputData = $input.all()[0].json;\nconst { chunks, novelId, namespace, metadata, source } = inputData;\n\n// Prepare chunks for processing\nconst processedChunks = chunks.map((chunk, index) => ({\n  index: chunk.index || index,\n  text: chunk.text,\n  length: chunk.length || chunk.text.length,\n  id: `${novelId}-chunk-${chunk.index || index}`\n}));\n\nreturn [{\n  json: {\n    ...inputData,\n    processedChunks,\n    totalChunks: processedChunks.length,\n    currentChunkIndex: 0\n  }\n}];"
+      },
+      "id": "b2c3d4e5-f6g7-8901-bcde-f23456789012",
+      "name": "Prepare Chunks for Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split chunks into individual items for processing\nconst inputData = $input.all()[0].json;\nconst { processedChunks, novelId, namespace, metadata, source } = inputData;\n\nreturn processedChunks.map(chunk => ({\n  json: {\n    novelId,\n    namespace,\n    metadata,\n    source,\n    chunk,\n    totalChunks: processedChunks.length\n  }\n}));"
+      },
+      "id": "c3d4e5f6-g7h8-9012-cdef-345678901234",
+      "name": "Split Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EMBEDDING_SERVICE }}/embed",
+        "options": {
+          "timeout": 15000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.chunk.text, \"model\": $env.EMBEDDING_MODEL_NAME || \"e5-large-v2\" } }}"
+      },
+      "id": "d4e5f6g7-h8i9-0123-defg-456789012345",
+      "name": "Generate Embeddings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        -200
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare vectors for Pinecone upsert\nconst embeddingResponse = $input.all()[0].json;\n\n// Get the original chunk data from Generate Embeddings node input\nconst generateEmbeddingsInput = $('Generate Embeddings').first().json;\n\nif (!embeddingResponse.embedding || !Array.isArray(embeddingResponse.embedding)) {\n  throw new Error('Invalid embedding response');\n}\n\nconst vector = {\n  id: generateEmbeddingsInput.chunk.id,\n  values: embeddingResponse.embedding,\n  metadata: {\n    ...generateEmbeddingsInput.metadata,\n    chunkIndex: generateEmbeddingsInput.chunk.index,\n    length: generateEmbeddingsInput.chunk.length,\n    novelId: generateEmbeddingsInput.novelId,\n    namespace: generateEmbeddingsInput.namespace,\n    sourceFile: generateEmbeddingsInput.source.fileName || 'unknown',\n    uploadedAt: new Date().toISOString()\n  }\n};\n\nreturn [{\n  json: {\n    vector,\n    namespace: generateEmbeddingsInput.namespace,\n    novelId: generateEmbeddingsInput.novelId,\n    chunkIndex: generateEmbeddingsInput.chunk.index,\n    totalChunks: generateEmbeddingsInput.totalChunks\n  }\n}];"
+      },
+      "id": "e5f6g7h8-i9j0-1234-efgh-567890123456",
+      "name": "Prepare Pinecone Vector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PINECONE_URL }}/vectors/upsert",
+        "options": {
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"vectors\": [$json.vector], \"namespace\": $json.namespace } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Api-Key",
+              "value": "={{ $env.PINECONE_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "f6g7h8i9-j0k1-2345-fghi-678901234567",
+      "name": "Upsert to Pinecone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        -200
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate embedding results\nconst allResults = $input.all();\nconst successfulUpserts = allResults.filter(item => !item.error && (item.json.upsertedCount > 0 || item.json.status === 'success'));\nconst failedUpserts = allResults.filter(item => item.error || (item.json.upsertedCount === 0 && item.json.status !== 'success'));\n\nconst totalProcessed = allResults.length;\nconst totalSuccessful = successfulUpserts.length;\nconst totalFailed = failedUpserts.length;\n\n// Get metadata from Prepare Pinecone Vector results\nconst vectorData = $('Prepare Pinecone Vector').all();\nconst firstVector = vectorData[0]?.json || {};\nconst novelId = firstVector.novelId || 'unknown';\nconst namespace = firstVector.namespace || 'unknown';\nconst totalChunks = firstVector.totalChunks || totalProcessed;\n\nconst response = {\n  status: totalFailed === 0 ? 'success' : (totalSuccessful > 0 ? 'partial_success' : 'failed'),\n  mode: 'embedding',\n  data: {\n    novelId,\n    namespace,\n    totalChunks,\n    successfulUpserts: totalSuccessful,\n    failedUpserts: totalFailed,\n    upsertedVectors: successfulUpserts.map((r, index) => {\n      const vectorInfo = vectorData[index]?.json || {};\n      return {\n        chunkIndex: vectorInfo.chunkIndex || index,\n        vectorId: vectorInfo.vector?.id || `${novelId}-chunk-${index}`,\n        upsertedCount: r.json.upsertedCount || 1\n      };\n    })\n  },\n  metadata: {\n    timestamp: new Date().toISOString(),\n    processingTime: Date.now() - new Date().getTime()\n  }\n};\n\nif (totalFailed > 0) {\n  response.errors = failedUpserts.map((r, index) => ({\n    chunkIndex: vectorData[index]?.json?.chunkIndex || index,\n    error: r.error?.message || r.json?.error || 'Unknown error'\n  }));\n}\n\nreturn [{ json: response }];"
+      },
+      "id": "g7h8i9j0-k1l2-3456-ghij-789012345678",
+      "name": "Aggregate Embedding Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "h8i9j0k1-l2m3-4567-hijk-890123456789",
+      "name": "Respond Embedding Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle embedding errors\nconst error = $input.all()[0];\nconst inputData = $('Prepare Chunks for Embedding').first()?.json || {};\n\nconst errorResponse = {\n  status: 'error',\n  message: error.error?.message || 'Embedding upload failed',\n  mode: 'embedding',\n  data: {\n    novelId: inputData.novelId || 'unknown',\n    namespace: inputData.namespace || 'unknown',\n    totalChunks: inputData.totalChunks || 0\n  },\n  timestamp: new Date().toISOString(),\n  error: {\n    type: error.error?.name || 'EmbeddingError',\n    details: error.error?.stack || 'No details available'\n  }\n};\n\nreturn [{ json: errorResponse }];"
+      },
+      "id": "i9j0k1l2-m3n4-5678-ijkl-901234567890",
+      "name": "Prepare Embedding Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "j0k1l2m3-n4o5-6789-jklm-012345678901",
+      "name": "Respond Embedding Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate context from all sources\nconst inputData = $input.all()[0].json;\n\n// Get data from various sources\nlet neo4jData = null;\nlet graphqlData = null;\nlet pineconeData = null;\nlet previousChapter = null;\nlet worldState = null;\n\ntry {\n  neo4jData = $('Fetch Context via Neo4j').first().json;\n} catch (e) {}\n\ntry {\n  const graphqlResponse = $('GraphQL World Query').first().json;\n  graphqlData = graphqlResponse.data;\n} catch (e) {}\n\ntry {\n  pineconeData = $('Pinecone Query').first().json;\n} catch (e) {}\n\ntry {\n  previousChapter = $('Redis Previous Chapter').first().json;\n} catch (e) {}\n\ntry {\n  worldState = $('Redis World State').first().json;\n} catch (e) {}\n\n// Extract structured context from Neo4j\nlet structuredContext = {};\ntry {\n  const results = neo4jData?.results?.[0]?.data?.[0];\n  if (results) {\n    const row = results.row || results;\n    if (Array.isArray(row)) {\n      structuredContext = {\n        chapter: row[0],\n        characters: row[1] || [],\n        locations: row[2] || [],\n        related: row[3] || []\n      };\n    } else if (typeof row === 'object') {\n      structuredContext = {\n        chapter: row.chapter,\n        characters: row.characters || [],\n        locations: row.locations || [],\n        related: row.related || []\n      };\n    }\n  }\n} catch (e) {}\n\n// Extract Pinecone matches\nlet relevantContext = [];\ntry {\n  if (pineconeData?.matches) {\n    relevantContext = pineconeData.matches.slice(0, 5).map(match => ({\n      content: match.metadata?.content || '',\n      score: match.score || 0,\n      source: match.metadata?.source || 'unknown'\n    }));\n  }\n} catch (e) {}\n\n// Combine all context\nconst combinedContext = {\n  novelData: graphqlData?.novel || {},\n  structuredContext,\n  relevantContext,\n  previousChapter: previousChapter || null,\n  worldState: worldState || {},\n  metadata: {\n    hasNeo4j: !!neo4jData,\n    hasGraphQL: !!graphqlData,\n    hasPinecone: !!pineconeData,\n    hasPreviousChapter: !!previousChapter,\n    hasWorldState: !!worldState,\n    timestamp: new Date().toISOString()\n  }\n};\n\nreturn [{\n  json: {\n    combinedContext,\n    ...inputData\n  }\n}];"
+      },
+      "id": "93af8027-5cbd-4fd2-8f1b-a759047d6d8a",
+      "name": "Aggregate Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build comprehensive generation prompt\nconst { combinedContext, focusElements, stylePreference, mood, chapterNumber, novelId, previousFeedback, lastScore } = $input.all()[0].json;\nconst { novelData, structuredContext, relevantContext, previousChapter, worldState } = combinedContext;\n\n// Extract character information\nconst characters = (structuredContext?.characters || novelData?.characters || []).slice(0, 5);\nconst characterInfo = characters.map(c => `**${c.name}**: ${c.traits || c.motivations || 'No details'}`).join('\\n');\n\n// Extract world information\nconst powerSystem = structuredContext?.world?.powerSystem || novelData?.world?.powerSystem || 'Undefined magic system';\nconst locations = (structuredContext?.locations || novelData?.world?.cities || []).slice(0, 3);\nconst locationInfo = locations.map(l => `- ${l.name}: ${l.description || l.geography || 'No details'}`).join('\\n');\n\n// Previous chapter context\nconst prevChapterSummary = previousChapter ? `\\n**Chapter ${chapterNumber - 1} Summary:**\\n${previousChapter.slice(0, 500)}...` : '';\n\n// Relevant context from vector search\nconst contextSnippets = relevantContext.slice(0, 3).map(ctx => `- ${ctx.content.slice(0, 200)}...`).join('\\n');\n\n// Feedback integration for iterations\nconst feedbackSection = previousFeedback ? `\\n\\n**PERBAIKAN DARI EVALUASI SEBELUMNYA (Skor: ${lastScore}/100):**\\n${previousFeedback}\\n` : '';\n\n// Style and mood guidelines\nconst styleGuide = {\n  'character-driven': 'Fokus pada pengembangan karakter, dialog mendalam, dan motivasi internal',\n  'action-packed': 'Aksi cepat, konflik fisik, pacing tinggi dengan deskripsi dinamis',\n  'world-building': 'Detail dunia, sistem magic, budaya, dan latar belakang yang kaya',\n  'dialogue-heavy': 'Percakapan natural, karakterisasi melalui dialog, minimal narasi',\n  'descriptive': 'Deskripsi visual yang kaya, atmosfer mendalam, detail sensorik'\n};\n\nconst moodGuide = {\n  'mysterious': 'Atmosfer penuh teka-teki, foreshadowing, ketegangan yang membangun',\n  'dark': 'Tone gelap, konflik moral, konsekuensi berat, atmosfer suram',\n  'adventurous': 'Semangat eksplorasi, penemuan baru, optimisme dalam tantangan',\n  'romantic': 'Hubungan emosional, chemistry karakter, momen intimate',\n  'epic': 'Skala besar, heroisme, takdir, konflik good vs evil'\n};\n\nconst generationPrompt = `Tulis chapter ${chapterNumber} novel fantasy dalam Bahasa Indonesia dengan detail berikut:\n\n**FOKUS UTAMA:** ${focusElements}\n\n**KARAKTER UTAMA:**\n${characterInfo || 'Karakter akan dikembangkan dalam chapter ini'}\n\n**DUNIA & SETTING:**\n- **Power System:** ${powerSystem}\n- **Lokasi:**\n${locationInfo || '- Lokasi akan dieksplorasi dalam chapter ini'}\n\n**KONTEKS RELEVAN:**\n${contextSnippets || 'Tidak ada konteks tambahan'}${prevChapterSummary}\n\n**GAYA PENULISAN:** ${styleGuide[stylePreference] || stylePreference}\n**MOOD TARGET:** ${moodGuide[mood] || mood}${feedbackSection}\n\n**PERSYARATAN TEKNIS:**\n- Panjang: 2000-3000 kata\n- Format: Prosa naratif dengan dialog natural\n- Konsistensi: Sesuai dengan dunia dan karakter yang sudah ada\n- Pacing: Seimbang antara aksi, dialog, dan deskripsi\n- Ending: Hook yang menarik untuk chapter selanjutnya\n\n**STRUKTUR CHAPTER:**\n1. **Opening**: Situasi awal yang menarik\n2. **Development**: Pengembangan konflik/karakter sesuai fokus\n3. **Climax**: Puncak ketegangan chapter\n4. **Resolution**: Penyelesaian dengan transisi ke chapter berikutnya\n\nMulai menulis chapter sekarang dengan gaya yang engaging dan sesuai dengan mood yang diminta:`;\n\nreturn [{\n  json: {\n    generationPrompt,\n    metadata: {\n      characterCount: characters.length,\n      locationCount: locations.length,\n      hasContext: relevantContext.length > 0,\n      hasPreviousChapter: !!previousChapter,\n      feedbackIntegrated: !!previousFeedback\n    },\n    ...($input.all()[0].json)\n  }\n}];"
+      },
+      "id": "c709d334-4b94-44b0-a70e-c951357eb11c",
+      "name": "Build Generation Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.generationPrompt }}",
+        "options": {}
+      },
+      "id": "5ae98d2c-383d-44aa-8ebf-018739c75b2a",
+      "name": "Novel Generation Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        1408,
+        1200
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Propagate or generate trace ID for downstream requests\nconst input = $input.all()[0].json || {};\nconst existing = input.traceId || input.requestId;\nconst randomId = Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36);\nconst traceId = existing || randomId;\nreturn [{ json: { ...input, traceId } }];"
+      },
+      "id": "141d28c4-8318-4f92-bdec-257558a3e741",
+      "name": "Trace ID Propagator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summarize context if oversized to keep prompt within limits\nconst input = $input.all()[0].json;\nlet { combinedContext } = input;\ntry {\n  const size = JSON.stringify(combinedContext || {}).length;\n  const LIMIT = 10000;\n  if (size > LIMIT && combinedContext) {\n    const summarized = {\n      novelData: {\n        title: combinedContext.novelData?.title,\n        world: combinedContext.novelData?.world ? {\n          powerSystem: combinedContext.novelData.world.powerSystem,\n          cities: (combinedContext.novelData.world.cities || []).slice(0, 1)\n        } : undefined\n      },\n      structuredContext: {\n        chapter: combinedContext.structuredContext?.chapter,\n        characters: (combinedContext.structuredContext?.characters || []).slice(0, 3),\n        locations: (combinedContext.structuredContext?.locations || []).slice(0, 2)\n      },\n      relevantContext: (combinedContext.relevantContext || []).slice(0, 3).map(r => ({\n        content: String(r.content || '').slice(0, 200),\n        score: r.score,\n        source: r.source\n      })),\n      previousChapter: typeof combinedContext.previousChapter === 'string' ? combinedContext.previousChapter.slice(0, 500) : combinedContext.previousChapter,\n      worldState: combinedContext.worldState || {},\n      metadata: combinedContext.metadata\n    };\n    return [{ json: { ...input, combinedContext: summarized } }];\n  }\n  return [{ json: input }];\n} catch (e) {\n  return [{ json: input }];\n}"
+      },
+      "id": "78bf955b-576d-4ca4-bc0c-333eaf6ce6d9",
+      "name": "Context Summarizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Track approximate token usage for generation output\nconst out = $input.all()[0].json || {};\nconst text = out.response || '';\nconst approxTokens = Math.ceil((text || '').length / 4);\nreturn [{ json: { ...out, tokenUsage: { ...(out.tokenUsage || {}), generation: approxTokens } } }];"
+      },
+      "id": "8b679b58-604d-4ef9-989d-71ae8d3c51a6",
+      "name": "Track Generation Tokens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Track approximate token usage for evaluation output\nconst out = $input.all()[0].json || {};\nconst text = out.response || '';\nconst approxTokens = Math.ceil((text || '').length / 4);\nreturn [{ json: { ...out, tokenUsage: { ...(out.tokenUsage || {}), evaluation: approxTokens } } }];"
+      },
+      "id": "821318ff-45f2-4336-9394-a20e14c8587f",
+      "name": "Track Evaluation Tokens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        1808
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Trace ID Propagator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trace ID Propagator": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input Parameters": {
+      "main": [
+        [
+          {
+            "node": "Build GraphQL Query",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Context via Neo4j",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Redis Previous Chapter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Redis World State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Context via Neo4j": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build GraphQL Query": {
+      "main": [
+        [
+          {
+            "node": "GraphQL World Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GraphQL World Query": {
+      "main": [
+        [
+          {
+            "node": "Validate GraphQL Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate GraphQL Response": {
+      "main": [
+        [
+          {
+            "node": "Build Embedding Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Global Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Embedding Query": {
+      "main": [
+        [
+          {
+            "node": "E5-large-v2 Embedding Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E5-large-v2 Embedding Query": {
+      "main": [
+        [
+          {
+            "node": "Build Pinecone Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Pinecone Query": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Query": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Previous Chapter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis World State": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Context": {
+      "main": [
+        [
+          {
+            "node": "Context Summarizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Context Summarizer": {
+      "main": [
+        [
+          {
+            "node": "Build Generation Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Generation Prompt": {
+      "main": [
+        [
+          {
+            "node": "Novel Generation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Novel Generation Agent": {
+      "main": [
+        [
+          {
+            "node": "Track Generation Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Generation Tokens": {
+      "main": [
+        [
+          {
+            "node": "Cache Generated Chapter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Generated Chapter": {
+      "main": [
+        [
+          {
+            "node": "Build Evaluation Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Evaluation Prompt": {
+      "main": [
+        [
+          {
+            "node": "QA Evaluation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Evaluation Agent": {
+      "main": [
+        [
+          {
+            "node": "Track Evaluation Tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Evaluation Tokens": {
+      "main": [
+        [
+          {
+            "node": "Parse Evaluation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Evaluation Result": {
+      "main": [
+        [
+          {
+            "node": "Evaluation Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluation Switch": {
+      "main": [
+        [
+          {
+            "node": "Store Chapter Redis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Increment Iteration",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Intervention Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Iteration": {
+      "main": [
+        [
+          {
+            "node": "Build Generation Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Chapter Redis": {
+      "main": [
+        [
+          {
+            "node": "Prepare World State Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare World State Update": {
+      "main": [
+        [
+          {
+            "node": "Update World State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update World State": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Success Response": {
+      "main": [
+        [
+          {
+            "node": "Sign Success Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Success Callback": {
+      "main": [
+        [
+          {
+            "node": "Post Success Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Success Callback": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Intervention Callback": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Intervention Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond Intervention Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Intervention Data": {
+      "main": [
+        [
+          {
+            "node": "Respond Intervention Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Global Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Prepare Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Error Callback": {
+      "main": [
+        [
+          {
+            "node": "Sign Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Error Callback": {
+      "main": [
+        [
+          {
+            "node": "Post Error Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Error Callback": {
+      "main": [
+        [
+          {
+            "node": "Respond Intervention Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Upload Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Upload Payload": {
+      "main": [
+        [
+          {
+            "node": "Check Upload Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Upload Mode": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chunks for Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Neo4j Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chunks for Embedding": {
+      "main": [
+        [
+          {
+            "node": "Split Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Chunks": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Prepare Pinecone Vector",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Embedding Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Pinecone Vector": {
+      "main": [
+        [
+          {
+            "node": "Upsert to Pinecone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert to Pinecone": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Embedding Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Embedding Results": {
+      "main": [
+        [
+          {
+            "node": "Respond Embedding Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Embedding Error": {
+      "main": [
+        [
+          {
+            "node": "Respond Embedding Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Neo4j Upload": {
+      "main": [
+        [
+          {
+            "node": "Prepare Upload Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Upload Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Upload Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Error": {
+      "main": [
+        [
+          {
+            "node": "Respond Upload Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Processing Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Document Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Document Input": {
+      "main": [
+        [
+          {
+            "node": "Check Processing Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Processing Mode": {
+      "main": [
+        [
+          {
+            "node": "Download Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Advanced Document Chunker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Document": {
+      "main": [
+        [
+          {
+            "node": "Advanced Document Chunker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Document Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advanced Document Chunker": {
+      "main": [
+        [
+          {
+            "node": "Split Chunks for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Chunks for Processing": {
+      "main": [
+        [
+          {
+            "node": "Generate Document Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Document Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document Vector",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Document Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document Vector": {
+      "main": [
+        [
+          {
+            "node": "Upsert Document Vector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Document Vector": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Document Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Document Results": {
+      "main": [
+        [
+          {
+            "node": "Respond Document Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document Error": {
+      "main": [
+        [
+          {
+            "node": "Respond Document Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f16fc696-413f-4b4e-8156-e0180dbf732c",
+  "meta": {
+    "instanceId": "364a81ff2e97d8e77b1ea0b5cb34ca60c8a2986f2d77507f39b2f1c0dfd930b1"
+  },
+  "id": "HH2YkcJTrEvB70Um",
+  "tags": []
+}

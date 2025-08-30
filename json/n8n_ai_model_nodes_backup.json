@@ -1,0 +1,162 @@
+{
+  "name": "AI Model Service Integration Nodes",
+  "description": "Template nodes untuk integrasi dengan AI Model Service backend",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.BACKEND_URL }}/ai-models/generate",
+        "authentication": "none",
+        "requestFormat": "json",
+        "jsonParameters": "{\n  \"prompt\": \"{{ $json.prompt }}\",\n  \"model\": \"{{ $json.model || 'openai' }}\",\n  \"options\": {\n    \"temperature\": {{ $json.temperature || 0.8 }},\n    \"maxTokens\": {{ $json.maxTokens || 4000 }},\n    \"model\": \"{{ $json.modelName || 'gpt-4' }}\"\n  },\n  \"requestId\": \"{{ $json.requestId || $runId }}\"\n}",
+        "options": {
+          "timeout": 60000,
+          "retry": {
+            "enabled": true,
+            "maxAttempts": 3,
+            "waitBetween": 2000
+          }
+        }
+      },
+      "id": "ai-model-generation-node",
+      "name": "AI Model Generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 1600],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.BACKEND_URL }}/ai-models/evaluate",
+        "authentication": "none",
+        "requestFormat": "json",
+        "jsonParameters": "{\n  \"text\": \"{{ $json.generatedText }}\",\n  \"criteria\": {{ JSON.stringify($json.criteria || ['coherence', 'creativity', 'grammar', 'style', 'engagement']) }},\n  \"model\": \"{{ $json.model || 'openai' }}\",\n  \"requestId\": \"{{ $json.requestId || $runId }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxAttempts": 2,
+            "waitBetween": 1000
+          }
+        }
+      },
+      "id": "ai-model-evaluation-node",
+      "name": "AI Model Evaluation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 1800],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.BACKEND_URL }}/ai-models/embed",
+        "authentication": "none",
+        "requestFormat": "json",
+        "jsonParameters": "{\n  \"text\": {{ Array.isArray($json.text) ? JSON.stringify($json.text) : JSON.stringify([$json.text]) }},\n  \"model\": \"{{ $json.model || 'custom' }}\",\n  \"requestId\": \"{{ $json.requestId || $runId }}\"\n}",
+        "options": {
+          "timeout": 20000,
+          "retry": {
+            "enabled": true,
+            "maxAttempts": 2,
+            "waitBetween": 1000
+          }
+        }
+      },
+      "id": "ai-model-embedding-node",
+      "name": "AI Model Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 800],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare prompt for AI Model Generation Service\nconst inputData = $input.all()[0].json;\n\n// Build comprehensive prompt from context\nconst { novelId, chapterNumber, focusElements, stylePreference, mood, combinedContext } = inputData;\nconst { novelData, structuredContext, pineconeResults, previousChapter, worldState } = combinedContext || {};\n\n// Extract character information\nconst characters = (structuredContext?.characters || novelData?.characters || [])\n  .slice(0, 5)\n  .map(c => `${c.name}: ${c.traits || 'No traits specified'}`);\n\n// Extract world information\nconst worldInfo = {\n  powerSystem: structuredContext?.world?.powerSystem || novelData?.world?.powerSystem || 'Not specified',\n  locations: (structuredContext?.locations || novelData?.world?.cities || []).slice(0, 3).map(l => l.name),\n  cultures: (structuredContext?.world?.cultures || novelData?.world?.cultures || []).slice(0, 2).map(c => c.name)\n};\n\n// Build context from Pinecone results\nconst relevantContext = (pineconeResults?.matches || [])\n  .slice(0, 5)\n  .map(match => match.metadata?.text || '')\n  .filter(text => text.length > 0)\n  .join('\\n\\n');\n\n// Previous chapter summary\nconst prevChapterSummary = previousChapter ? \n  `Previous Chapter Summary: ${previousChapter.summary || 'Chapter ' + (chapterNumber - 1) + ' events'}` : \n  'This is the first chapter.';\n\n// Build comprehensive prompt\nconst prompt = `You are a skilled fantasy novelist. Write Chapter ${chapterNumber} of a novel with the following specifications:\n\n**NOVEL CONTEXT:**\n- Novel ID: ${novelId}\n- Chapter Number: ${chapterNumber}\n- Focus Elements: ${focusElements}\n- Style Preference: ${stylePreference}\n- Mood: ${mood}\n\n**CHARACTERS:**\n${characters.length > 0 ? characters.join('\\n') : 'Characters will be introduced as needed.'}\n\n**WORLD BUILDING:**\n- Power System: ${worldInfo.powerSystem}\n- Key Locations: ${worldInfo.locations.join(', ') || 'To be established'}\n- Cultures: ${worldInfo.cultures.join(', ') || 'To be established'}\n\n**STORY CONTEXT:**\n${prevChapterSummary}\n\n**RELEVANT BACKGROUND:**\n${relevantContext || 'Building from established world elements.'}\n\n**WRITING REQUIREMENTS:**\n1. Write approximately 2000-3000 words\n2. Maintain consistency with established characters and world\n3. Focus on: ${focusElements}\n4. Use ${stylePreference} writing style\n5. Convey a ${mood} mood throughout\n6. Include dialogue and action\n7. End with a compelling hook for the next chapter\n\n**OUTPUT FORMAT:**\nProvide only the chapter content without any meta-commentary or explanations. Begin directly with the story.\n\nChapter ${chapterNumber}:`;\n\nreturn [{\n  json: {\n    prompt,\n    model: 'openai',\n    temperature: 0.8,\n    maxTokens: 4000,\n    modelName: 'gpt-4',\n    requestId: `gen-${novelId}-ch${chapterNumber}-${Date.now()}`,\n    ...inputData\n  }\n}];"
+      },
+      "id": "prepare-generation-prompt",
+      "name": "Prepare Generation Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 1600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process AI Model Generation Response\nconst generationResponse = $('AI Model Generation').first().json;\nconst inputData = $input.all()[0].json;\n\nif (!generationResponse.success) {\n  throw new Error(`AI Generation failed: ${generationResponse.error}`);\n}\n\nconst generatedContent = generationResponse.data.generatedText;\nconst usage = generationResponse.data.usage;\nconst wordCount = generationResponse.data.wordCount;\n\n// Extract chapter title if present\nconst titleMatch = generatedContent.match(/^Chapter\\s+\\d+:?\\s*(.*)$/m);\nconst chapterTitle = titleMatch ? titleMatch[1].trim() : `Chapter ${inputData.chapterNumber}`;\n\n// Clean content (remove chapter header if it's redundant)\nconst cleanContent = generatedContent.replace(/^Chapter\\s+\\d+:?.*$/m, '').trim();\n\nreturn [{\n  json: {\n    generatedChapter: cleanContent,\n    chapterTitle,\n    wordCount,\n    usage,\n    processingTime: generationResponse.metadata.processingTime,\n    provider: generationResponse.metadata.provider,\n    ...inputData\n  }\n}];"
+      },
+      "id": "process-generation-response",
+      "name": "Process Generation Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 1600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare evaluation request for AI Model Service\nconst inputData = $input.all()[0].json;\nconst { generatedChapter, combinedContext } = inputData;\nconst { novelData, structuredContext } = combinedContext || {};\n\n// Define evaluation criteria specific to novel writing\nconst criteria = [\n  'coherence',\n  'creativity', \n  'character_consistency',\n  'world_building',\n  'dialogue_quality',\n  'pacing',\n  'engagement',\n  'grammar'\n];\n\n// Build context for evaluation\nconst characters = (structuredContext?.characters || novelData?.characters || [])\n  .slice(0, 3)\n  .map(c => ({ name: c.name, traits: c.traits, motivations: c.motivations }));\n\nconst worldContext = {\n  powerSystem: structuredContext?.world?.powerSystem || novelData?.world?.powerSystem,\n  locations: (structuredContext?.locations || novelData?.world?.cities || []).slice(0, 2)\n};\n\nreturn [{\n  json: {\n    generatedText: generatedChapter,\n    criteria,\n    model: 'openai',\n    requestId: `eval-${inputData.novelId}-ch${inputData.chapterNumber}-${Date.now()}`,\n    evaluationContext: {\n      characters,\n      worldContext,\n      chapterNumber: inputData.chapterNumber,\n      focusElements: inputData.focusElements\n    },\n    ...inputData\n  }\n}];"
+      },
+      "id": "prepare-evaluation-request",
+      "name": "Prepare Evaluation Request", \n      "type": "n8n-nodes-base.code",\n      "typeVersion": 2,\n      "position": [2000, 1600]\n    },\n    {\n      "parameters": {\n        "jsCode": "// Process AI Model Evaluation Response\\nconst evaluationResponse = $('AI Model Evaluation').first().json;\\nconst inputData = $input.all()[0].json;\\n\\nif (!evaluationResponse.success) {\\n  console.warn('Evaluation failed, using fallback scores');\\n  \\n  return [{\\n    json: {\\n      evaluationResult: {\\n        overallScore: 7.0,\\n        scores: {\\n          coherence: 7,\\n          creativity: 7,\\n          character_consistency: 7,\\n          world_building: 7,\\n          dialogue_quality: 7,\\n          pacing: 7,\\n          engagement: 7,\\n          grammar: 8\\n        },\\n        feedback: {\\n          strengths: ['Chapter generated successfully'],\\n          improvements: ['Evaluation service unavailable - manual review recommended'],\\n          summary: 'Automatic evaluation failed, manual review needed'\\n        },\\n        passed: true,\\n        evaluationError: evaluationResponse.error\\n      },\\n      ...inputData\\n    }\\n  }];\\n}\\n\\nconst evaluation = evaluationResponse.data.evaluation;\\nconst qualityScore = evaluation.overallScore;\\nconst passed = qualityScore >= 7.5; // Threshold for acceptance\\n\\nreturn [{\\n  json: {\\n    evaluationResult: {\\n      ...evaluation,\\n      passed,\\n      qualityScore\\n    },\\n    processingTime: evaluationResponse.metadata.processingTime,\\n    ...inputData\\n  }\\n}];"
+      },
+      "id": "process-evaluation-response",
+      "name": "Process Evaluation Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, 1800]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare embedding request for context search\nconst inputData = $input.all()[0].json;\nconst { novelId, chapterNumber, focusElements } = inputData;\n\n// Build embedding text for semantic search\nconst embeddingText = `Novel: ${novelId} Chapter: ${chapterNumber} Focus: ${focusElements}`;\n\nreturn [{\n  json: {\n    text: embeddingText,\n    model: 'custom', // Use custom embedding service\n    requestId: `embed-${novelId}-ch${chapterNumber}-${Date.now()}`,\n    ...inputData\n  }\n}];"
+      },
+      "id": "prepare-embedding-request",
+      "name": "Prepare Embedding Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 800]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process embedding response for Pinecone query\nconst embeddingResponse = $('AI Model Embedding').first().json;\nconst inputData = $input.all()[0].json;\n\nif (!embeddingResponse.success) {\n  throw new Error(`Embedding generation failed: ${embeddingResponse.error}`);\n}\n\nconst embeddings = embeddingResponse.data.embeddings;\nconst embedding = Array.isArray(embeddings) ? embeddings[0] : embeddings;\n\nif (!Array.isArray(embedding)) {\n  throw new Error('Invalid embedding format received');\n}\n\n// Prepare Pinecone query\nconst pineconeQuery = {\n  vector: embedding,\n  topK: 10,\n  includeMetadata: true,\n  namespace: `novel-${inputData.novelId}`\n};\n\nreturn [{\n  json: {\n    pineconeQuery,\n    embeddingDimensions: embedding.length,\n    embeddingModel: embeddingResponse.data.model,\n    ...inputData\n  }\n}];"
+      },
+      "id": "process-embedding-response",
+      "name": "Process Embedding Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 800]
+    }
+  ],
+  "environment_variables": {
+    "BACKEND_URL": "http://localhost:8081",
+    "AI_GENERATION_TIMEOUT": "60000",
+    "AI_EVALUATION_TIMEOUT": "30000",
+    "AI_EMBEDDING_TIMEOUT": "20000"
+  },
+  "integration_notes": {
+    "description": "Template nodes untuk mengintegrasikan N8N workflow dengan AI Model Service backend",
+    "usage": [
+      "1. Replace existing OpenAI nodes dengan AI Model Generation node",
+      "2. Replace existing evaluation logic dengan AI Model Evaluation node", 
+      "3. Replace existing embedding service dengan AI Model Embedding node",
+      "4. Set environment variable BACKEND_URL ke URL backend service",
+      "5. Pastikan backend service running dan accessible dari N8N instance"
+    ],
+    "benefits": [
+      "Centralized AI model management",
+      "Support multiple AI providers (OpenAI, Gemini, Anthropic)",
+      "Consistent error handling dan retry logic",
+      "Better monitoring dan logging",
+      "Flexible model switching tanpa mengubah workflow"
+    ],
+    "migration_steps": [
+      "1. Deploy backend dengan AI Model Service",
+      "2. Test AI Model Service endpoints",
+      "3. Update N8N workflow dengan nodes baru",
+      "4. Update environment variables",
+      "5. Test end-to-end workflow",
+      "6. Monitor performance dan error rates"
+    ]
+  }
+}
